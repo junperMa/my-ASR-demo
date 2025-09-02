@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>语音实时转文字</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+
+        .status {
+            margin-bottom: 30px;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .status.ready {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 2px solid #4caf50;
+        }
+
+        .status.listening {
+            background: #fff3e0;
+            color: #f57c00;
+            border: 2px solid #ff9800;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            border: 2px solid #f44336;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .controls {
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn.recording {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            animation: pulse 1.5s infinite;
+        }
+
+        .transcript-container {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            min-height: 200px;
+            text-align: left;
+            border: 2px solid #e9ecef;
+        }
+
+        .transcript {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .transcript.empty {
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .action-btn:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+
+        .language-selector {
+            margin-bottom: 20px;
+        }
+
+        .language-selector select {
+            padding: 10px 15px;
+            border-radius: 25px;
+            border: 2px solid #e9ecef;
+            font-size: 16px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .info {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            color: #1976d2;
+        }
+
+        .error-message {
+            background: #ffebee;
+            border: 1px solid #f44336;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            color: #c62828;
+        }
+
+        .network-status.success {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            color: #2e7d32;
+        }
+
+        .network-status.warning {
+            background: #fff3e0;
+            border: 1px solid #ff9800;
+            color: #f57c00;
+        }
+
+        .network-status.error {
+            background: #ffebee;
+            border: 1px solid #f44336;
+            color: #c62828;
+        }
+
+        .network-info {
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            h1 {
+                font-size: 2em;
+            }
+            
+            .btn {
+                padding: 12px 24px;
+                font-size: 16px;
+                margin: 5px;
+            }
+            
+            .actions {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 语音实时转文字</h1>
+        
+        <div class="language-selector">
+            <select id="languageSelect">
+                <option value="zh-CN">中文 (简体)</option>
+                <option value="en-US">English (US)</option>
+                <option value="ja-JP">日本語</option>
+                <option value="ko-KR">한국어</option>
+                <option value="fr-FR">Français</option>
+                <option value="de-DE">Deutsch</option>
+                <option value="es-ES">Español</option>
+            </select>
+        </div>
+
+        <div id="status" class="status ready">
+            准备就绪，点击开始录音
+        </div>
+
+        <div class="controls">
+            <button id="startBtn" class="btn">开始录音</button>
+            <button id="stopBtn" class="btn" disabled>停止录音</button>
+        </div>
+
+        <div class="transcript-container">
+            <div id="transcript" class="transcript empty">
+                录音内容将在这里显示...
+            </div>
+        </div>
+
+        <div class="actions">
+            <button id="clearBtn" class="action-btn">清空内容</button>
+            <button id="copyBtn" class="action-btn">复制文字</button>
+            <button id="downloadBtn" class="action-btn">下载文字</button>
+        </div>
+
+        <div class="info">
+            <strong>使用说明：</strong><br>
+            1. 选择语言（默认为中文简体）<br>
+            2. 点击"开始录音"按钮开始语音识别<br>
+            3. 说话时请保持清晰的发音<br>
+            4. 点击"停止录音"结束识别<br>
+            5. 可以清空、复制或下载识别结果
+        </div>
+
+        <div class="info" style="margin-top: 15px;">
+            <strong>⚠️ 重要提示：</strong><br>
+            • 语音识别需要稳定的网络连接<br>
+            • 建议使用HTTPS环境（更稳定）<br>
+            • 如果出现网络错误，系统会自动重试<br>
+            • 支持Chrome、Edge、Safari浏览器
+        </div>
+
+        <div id="networkStatus" class="info" style="margin-top: 15px; display: none;">
+            <strong>🌐 网络状态：</strong><br>
+            <span id="networkInfo">检测中...</span>
+        </div>
+    </div>
+
+    <script>
+        class SpeechRecognitionApp {
+            constructor() {
+                console.log('🚀 初始化语音识别应用...');
+                this.recognition = null;
+                this.isRecording = false;
+                this.transcript = '';
+                this.currentLanguage = 'zh-CN';
+                
+                this.initElements();
+                this.initSpeechRecognition();
+                this.bindEvents();
+                this.checkNetworkStatus();
+                this.checkEnvironmentCompatibility(); // 新增环境兼容性检查
+                console.log('✅ 语音识别应用初始化完成');
+            }
+
+            initElements() {
+                console.log('🔍 初始化DOM元素...');
+                this.startBtn = document.getElementById('startBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.status = document.getElementById('status');
+                this.transcriptElement = document.getElementById('transcript');
+                this.languageSelect = document.getElementById('languageSelect');
+                this.clearBtn = document.getElementById('clearBtn');
+                this.copyBtn = document.getElementById('copyBtn');
+                this.downloadBtn = document.getElementById('downloadBtn');
+                this.networkStatus = document.getElementById('networkStatus');
+                this.networkInfo = document.getElementById('networkInfo');
+                
+                // 检查所有元素是否都获取成功
+                const elements = {
+                    startBtn: this.startBtn,
+                    stopBtn: this.stopBtn,
+                    status: this.status,
+                    transcriptElement: this.transcriptElement,
+                    languageSelect: this.languageSelect,
+                    clearBtn: this.clearBtn,
+                    copyBtn: this.copyBtn,
+                    downloadBtn: this.downloadBtn,
+                    networkStatus: this.networkStatus,
+                    networkInfo: this.networkInfo
+                };
+                
+                Object.entries(elements).forEach(([name, element]) => {
+                    if (element) {
+                        console.log(`✅ ${name}: 获取成功`);
+                    } else {
+                        console.error(`❌ ${name}: 获取失败`);
+                    }
+                });
+            }
+
+            initSpeechRecognition() {
+                console.log('🎤 初始化语音识别...');
+                
+                // 检查浏览器支持
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                console.log('🔍 检查浏览器支持:', {
+                    'window.SpeechRecognition': !!window.SpeechRecognition,
+                    'window.webkitSpeechRecognition': !!window.webkitSpeechRecognition,
+                    'SpeechRecognition': !!SpeechRecognition
+                });
+                
+                if (!SpeechRecognition) {
+                    console.error('❌ 浏览器不支持语音识别');
+                    this.showError('您的浏览器不支持语音识别功能，请使用Chrome、Edge或Safari浏览器。');
+                    return;
+                }
+
+                console.log('✅ 浏览器支持语音识别，创建实例...');
+                this.recognition = new SpeechRecognition();
+                this.recognition.continuous = true;
+                this.recognition.interimResults = true;
+                this.recognition.lang = this.currentLanguage;
+                
+                console.log('📝 语音识别配置:', {
+                    continuous: this.recognition.continuous,
+                    interimResults: this.recognition.interimResults,
+                    lang: this.recognition.lang
+                });
+
+                this.recognition.onstart = () => {
+                    console.log('🎯 语音识别开始事件触发');
+                    this.isRecording = true;
+                    this.updateUI();
+                    this.updateStatus('正在录音...', 'listening');
+                    console.log('✅ 录音状态已更新，当前状态:', this.isRecording);
+                };
+
+                this.recognition.onresult = (event) => {
+                    console.log('🎵 语音识别结果事件触发');
+                    console.log('📊 事件详情:', {
+                        resultIndex: event.resultIndex,
+                        resultsLength: event.results.length,
+                        event: event
+                    });
+                    
+                    let finalTranscript = '';
+                    let interimTranscript = '';
+
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const result = event.results[i];
+                        const transcript = result[0].transcript;
+                        const isFinal = result.isFinal;
+                        
+                        console.log(`📝 结果 ${i}:`, {
+                            transcript: transcript,
+                            isFinal: isFinal,
+                            confidence: result[0].confidence
+                        });
+                        
+                        if (isFinal) {
+                            finalTranscript += transcript;
+                        } else {
+                            interimTranscript += transcript;
+                        }
+                    }
+
+                    console.log('📋 处理结果:', {
+                        finalTranscript: finalTranscript,
+                        interimTranscript: interimTranscript,
+                        currentTranscript: this.transcript
+                    });
+
+                    if (finalTranscript) {
+                        this.transcript += finalTranscript + '\n';
+                        console.log('✅ 最终文字已添加到记录中');
+                    }
+
+                    this.updateTranscript();
+                };
+
+                this.recognition.onerror = (event) => {
+                    console.error('❌ 语音识别错误事件触发:', event.error);
+                    console.log('🚨 错误详情:', event);
+                    
+                    let errorMessage = '语音识别出现错误';
+                    let shouldRetry = false;
+                    
+                    switch (event.error) {
+                        case 'no-speech':
+                            errorMessage = '没有检测到语音，请说话';
+                            break;
+                        case 'audio-capture':
+                            errorMessage = '无法访问麦克风，请检查权限设置';
+                            break;
+                        case 'not-allowed':
+                            errorMessage = '麦克风访问被拒绝，请允许访问麦克风';
+                            break;
+                        case 'network':
+                            errorMessage = '网络连接错误，语音识别服务无法访问。请检查：1) 网络连接 2) 是否使用HTTPS 3) 防火墙设置';
+                            shouldRetry = true;
+                            break;
+                        case 'aborted':
+                            errorMessage = '语音识别被中断';
+                            break;
+                        case 'audio-not-allowed':
+                            errorMessage = '音频访问被拒绝';
+                            break;
+                        case 'bad-grammar':
+                            errorMessage = '语法错误';
+                            break;
+                        case 'language-not-supported':
+                            errorMessage = '不支持的语言';
+                            break;
+                        case 'service-not-allowed':
+                            errorMessage = '语音识别服务被拒绝';
+                            break;
+                        default:
+                            errorMessage = `识别错误: ${event.error}`;
+                    }
+                    
+                    console.log('💬 错误消息:', errorMessage);
+                    console.log('🔄 是否应该重试:', shouldRetry);
+                    
+                    this.showError(errorMessage);
+                    
+                    if (shouldRetry && this.isRecording) {
+                        console.log('🔄 网络错误，3秒后尝试重新连接...');
+                        setTimeout(() => {
+                            if (this.isRecording) {
+                                console.log('🔄 尝试重新启动语音识别...');
+                                this.startRecording();
+                            }
+                        }, 3000);
+                    } else {
+                        this.stopRecording();
+                    }
+                };
+
+                this.recognition.onend = () => {
+                    console.log('🔚 语音识别结束事件触发');
+                    console.log('📊 当前录音状态:', this.isRecording);
+                    
+                    if (this.isRecording) {
+                        console.log('🔄 录音仍在进行，重新启动语音识别...');
+                        // 如果还在录音状态，重新开始
+                        try {
+                            this.recognition.start();
+                            console.log('✅ 语音识别已重新启动');
+                        } catch (error) {
+                            console.error('❌ 重新启动语音识别失败:', error);
+                        }
+                    } else {
+                        console.log('⏹️ 录音已停止，不重新启动');
+                    }
+                };
+            }
+
+            bindEvents() {
+                console.log('🔗 绑定事件监听器...');
+                
+                this.startBtn.addEventListener('click', () => {
+                    console.log('🖱️ 开始录音按钮被点击');
+                    this.startRecording();
+                });
+                
+                this.stopBtn.addEventListener('click', () => {
+                    console.log('🖱️ 停止录音按钮被点击');
+                    this.stopRecording();
+                });
+                
+                this.clearBtn.addEventListener('click', () => {
+                    console.log('🖱️ 清空内容按钮被点击');
+                    this.clearTranscript();
+                });
+                
+                this.copyBtn.addEventListener('click', () => {
+                    console.log('🖱️ 复制文字按钮被点击');
+                    this.copyTranscript();
+                });
+                
+                this.downloadBtn.addEventListener('click', () => {
+                    console.log('🖱️ 下载文字按钮被点击');
+                    this.downloadTranscript();
+                });
+                
+                this.languageSelect.addEventListener('change', (e) => {
+                    console.log('🖱️ 语言选择改变:', e.target.value);
+                    this.changeLanguage(e.target.value);
+                });
+                
+                console.log('✅ 所有事件监听器绑定完成');
+            }
+
+            startRecording() {
+                console.log('🎤 开始录音方法被调用');
+                console.log('📊 当前状态:', {
+                    recognition: !!this.recognition,
+                    isRecording: this.isRecording,
+                    currentLanguage: this.currentLanguage
+                });
+                
+                // 检查网络连接
+                if (!navigator.onLine) {
+                    console.error('❌ 网络连接断开，无法启动语音识别');
+                    this.showError('网络连接断开，请检查网络后重试');
+                    return;
+                }
+                
+                if (!this.recognition) {
+                    console.error('❌ 语音识别未初始化');
+                    this.showError('语音识别未初始化');
+                    return;
+                }
+
+                try {
+                    console.log('🚀 尝试启动语音识别...');
+                    this.recognition.start();
+                    console.log('✅ 语音识别启动命令已发送');
+                } catch (error) {
+                    console.error('❌ 启动录音失败:', error);
+                    this.showError('启动录音失败，请刷新页面重试');
+                }
+            }
+
+            stopRecording() {
+                console.log('⏹️ 停止录音方法被调用');
+                console.log('📊 停止前状态:', {
+                    recognition: !!this.recognition,
+                    isRecording: this.isRecording
+                });
+                
+                if (this.recognition) {
+                    console.log('🛑 停止语音识别...');
+                    this.recognition.stop();
+                    console.log('✅ 语音识别停止命令已发送');
+                }
+                
+                this.isRecording = false;
+                this.updateUI();
+                this.updateStatus('录音已停止', 'ready');
+                console.log('📊 停止后状态:', {
+                    isRecording: this.isRecording
+                });
+            }
+
+            changeLanguage(language) {
+                console.log('🌐 切换语言方法被调用:', language);
+                console.log('📊 切换前语言:', this.currentLanguage);
+                
+                this.currentLanguage = language;
+                if (this.recognition) {
+                    console.log('🔄 更新语音识别语言设置...');
+                    this.recognition.lang = language;
+                    console.log('✅ 语音识别语言已更新为:', language);
+                }
+                
+                const languageName = this.getLanguageName(language);
+                this.updateStatus(`语言已切换为: ${languageName}`, 'ready');
+                console.log('📊 切换后语言:', this.currentLanguage);
+            }
+
+            getLanguageName(code) {
+                const languages = {
+                    'zh-CN': '中文简体',
+                    'en-US': 'English',
+                    'ja-JP': '日本語',
+                    'ko-KR': '한국어',
+                    'fr-FR': 'Français',
+                    'de-DE': 'Deutsch',
+                    'es-ES': 'Español'
+                };
+                return languages[code] || code;
+            }
+
+            updateUI() {
+                console.log('🎨 更新UI方法被调用');
+                console.log('📊 当前录音状态:', this.isRecording);
+                
+                if (this.isRecording) {
+                    console.log('🔴 设置录音中状态...');
+                    this.startBtn.disabled = true;
+                    this.startBtn.classList.add('recording');
+                    this.startBtn.textContent = '录音中...';
+                    this.stopBtn.disabled = false;
+                    console.log('✅ 录音中状态设置完成');
+                } else {
+                    console.log('🟢 设置准备状态...');
+                    this.startBtn.disabled = false;
+                    this.startBtn.classList.remove('recording');
+                    this.startBtn.textContent = '开始录音';
+                    this.stopBtn.disabled = true;
+                    console.log('✅ 准备状态设置完成');
+                }
+            }
+
+            updateStatus(message, type) {
+                console.log('📝 更新状态方法被调用:', { message, type });
+                this.status.textContent = message;
+                this.status.className = `status ${type}`;
+                console.log('✅ 状态已更新为:', message);
+            }
+
+            updateTranscript() {
+                console.log('📋 更新文字显示方法被调用');
+                console.log('📊 当前文字内容:', {
+                    transcript: this.transcript,
+                    transcriptLength: this.transcript.length,
+                    hasContent: !!this.transcript.trim()
+                });
+                
+                if (this.transcript.trim()) {
+                    console.log('📝 显示识别文字...');
+                    this.transcriptElement.textContent = this.transcript;
+                    this.transcriptElement.classList.remove('empty');
+                    console.log('✅ 文字显示已更新');
+                } else {
+                    console.log('📝 显示默认提示文字...');
+                    this.transcriptElement.textContent = '录音内容将在这里显示...';
+                    this.transcriptElement.classList.add('empty');
+                    console.log('✅ 默认提示文字已显示');
+                }
+            }
+
+            clearTranscript() {
+                console.log('🗑️ 清空文字方法被调用');
+                console.log('📊 清空前文字长度:', this.transcript.length);
+                
+                this.transcript = '';
+                this.updateTranscript();
+                this.updateStatus('内容已清空', 'ready');
+                
+                console.log('✅ 文字已清空，当前长度:', this.transcript.length);
+            }
+
+            async copyTranscript() {
+                console.log('📋 复制文字方法被调用');
+                console.log('📊 当前文字长度:', this.transcript.length);
+                
+                if (!this.transcript.trim()) {
+                    console.log('❌ 没有内容可复制');
+                    this.updateStatus('没有内容可复制', 'error');
+                    return;
+                }
+
+                try {
+                    console.log('📋 尝试使用现代剪贴板API...');
+                    await navigator.clipboard.writeText(this.transcript);
+                    this.updateStatus('内容已复制到剪贴板', 'ready');
+                    console.log('✅ 文字已复制到剪贴板');
+                } catch (error) {
+                    console.log('⚠️ 现代剪贴板API失败，使用降级方案:', error);
+                    // 降级方案
+                    const textArea = document.createElement('textarea');
+                    textArea.value = this.transcript;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    this.updateStatus('内容已复制到剪贴板', 'ready');
+                    console.log('✅ 使用降级方案复制成功');
+                }
+            }
+
+            downloadTranscript() {
+                console.log('💾 下载文字方法被调用');
+                console.log('📊 当前文字长度:', this.transcript.length);
+                
+                if (!this.transcript.trim()) {
+                    console.log('❌ 没有内容可下载');
+                    this.updateStatus('没有内容可下载', 'error');
+                    return;
+                }
+
+                console.log('📁 创建下载文件...');
+                const blob = new Blob([this.transcript], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `语音转文字_${new Date().toLocaleString('zh-CN').replace(/[\/\s:]/g, '_')}.txt`;
+                
+                console.log('📥 触发下载...');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                this.updateStatus('文件已下载', 'ready');
+                console.log('✅ 文件下载完成');
+            }
+
+            showError(message) {
+                console.log('🚨 显示错误方法被调用:', message);
+                this.updateStatus(message, 'error');
+                
+                console.log('⏰ 设置3秒后恢复默认状态...');
+                setTimeout(() => {
+                    this.updateStatus('准备就绪，点击开始录音', 'ready');
+                    console.log('✅ 状态已恢复到默认');
+                }, 3000);
+            }
+
+            checkNetworkStatus() {
+                console.log('🌐 检查网络状态...');
+                
+                // 显示网络状态区域
+                if (this.networkStatus) {
+                    this.networkStatus.style.display = 'block';
+                }
+                
+                // 检测网络连接状态
+                if (navigator.onLine) {
+                    console.log('✅ 网络连接正常');
+                    this.updateNetworkInfo('🟢 网络连接正常', 'success');
+                } else {
+                    console.log('❌ 网络连接断开');
+                    this.updateNetworkInfo('🔴 网络连接断开', 'error');
+                }
+                
+                // 检测HTTPS状态
+                const isHttps = window.location.protocol === 'https:';
+                console.log('🔒 HTTPS状态:', isHttps);
+                
+                if (isHttps) {
+                    this.updateNetworkInfo('🟢 网络连接正常 | 🔒 HTTPS安全连接', 'success');
+                } else {
+                    this.updateNetworkInfo('🟡 网络连接正常 | ⚠️ HTTP连接（建议使用HTTPS）', 'warning');
+                }
+                
+                // 监听网络状态变化
+                window.addEventListener('online', () => {
+                    console.log('🌐 网络已连接');
+                    this.updateNetworkInfo('🟢 网络已连接', 'success');
+                });
+                
+                window.addEventListener('offline', () => {
+                    console.log('🌐 网络已断开');
+                    this.updateNetworkInfo('🔴 网络已断开', 'error');
+                });
+            }
+            
+            updateNetworkInfo(message, type) {
+                if (this.networkInfo) {
+                    this.networkInfo.textContent = message;
+                    this.networkInfo.className = `network-info ${type}`;
+                }
+                
+                // 添加样式类
+                if (this.networkStatus) {
+                    this.networkStatus.className = `info network-status ${type}`;
+                }
+            }
+
+            checkEnvironmentCompatibility() {
+                console.log('🔍 检查环境兼容性...');
+                const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+                const isEdge = /Edg/.test(navigator.userAgent);
+                const isSafari = /Safari/.test(navigator.userAgent) && !isChrome && !isEdge;
+
+                console.log('🌐 当前浏览器:', {
+                    'Chrome': isChrome,
+                    'Edge': isEdge,
+                    'Safari': isSafari
+                });
+
+                if (!isChrome && !isEdge && !isSafari) {
+                    console.warn('⚠️ 警告：您的浏览器不支持语音识别功能。建议使用Chrome、Edge或Safari浏览器。');
+                    this.showError('您的浏览器不支持语音识别功能。建议使用Chrome、Edge或Safari浏览器。');
+                } else {
+                    console.log('✅ 环境兼容性检查通过');
+                }
+            }
+        }
+
+        // 页面加载完成后初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('📄 页面DOM加载完成，开始初始化应用...');
+            try {
+                new SpeechRecognitionApp();
+                console.log('🎉 应用初始化成功！');
+            } catch (error) {
+                console.error('❌ 应用初始化失败:', error);
+            }
+        });
+    </script>
+</body>
+</html>
